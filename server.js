@@ -111,6 +111,9 @@ const gamesForWeek = db.prepare(`
   ORDER BY g.start_time, g.id
 `);
 
+const easternFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' });
+const easternDate = (iso) => easternFmt.format(new Date(iso)); // YYYY-MM-DD
+
 function isLocked(game) {
   return game.status !== 'pre' || new Date(game.start_time) <= new Date();
 }
@@ -130,6 +133,7 @@ app.get('/api/games', (req, res) => {
     return {
       id: g.id, startTime: g.start_time, status: g.status, statusDetail: g.status_detail,
       neutral: !!g.neutral_site, venue: g.venue, winner: g.winner_team_id, locked,
+      timeTbd: !!g.time_tbd, easternDate: easternDate(g.start_time),
       home: team('home'), away: team('away'), myPick: g.my_pick,
     };
   });

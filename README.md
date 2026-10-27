@@ -34,6 +34,7 @@ demo players (password `password`). Use it to try the site before the season sta
 |---|---|---|
 | `PORT` | `3000` | HTTP port |
 | `SEASON_START` | `2026-11-02` | Monday of week 1 (weeks run Monday–Sunday) |
+| `OPENING_DAY` | `2026-11-01` | First day of the season; days before `SEASON_START` count as week 1 |
 | `SEASON_WEEKS` | `23` | Number of weeks (through the Final Four) |
 | `SYNC_INTERVAL_MINUTES` | `10` | How often to pull scores |
 | `DB_PATH` | `data/pickem.db` | SQLite file location |

@@ -37,7 +37,11 @@ function toast(msg) {
   toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
 }
 
-const fmtDay = (iso) => new Date(iso).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+const fmtDay = (ymd) => new Date(`${ymd}T12:00:00Z`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
+// Calendar day a game belongs to. A game with no announced time is stored at midnight Eastern,
+// which would otherwise land on the previous evening for anyone west of the East Coast.
+const localDate = (iso) => new Intl.DateTimeFormat('en-CA').format(new Date(iso));
+const gameDay = (g) => (g.timeTbd ? g.easternDate : localDate(g.startTime));
 const fmtTime = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 const fmtRange = (w) => {
   const o = { month: 'short', day: 'numeric', timeZone: 'UTC' };
@@ -161,7 +165,7 @@ function gameCard(game) {
   if (game.status === 'in') status = `<span class="status-live">${esc(game.statusDetail || 'Live')}</span>`;
   else if (game.status === 'post') status = `<b>${esc(game.statusDetail || 'Final')}</b>`;
   else if (game.status === 'canceled') status = `<b>${esc(game.statusDetail || 'Canceled')}</b>`;
-  else status = `${fmtTime(game.startTime)}${game.locked ? ' · 🔒' : ''}`;
+  else status = `${game.timeTbd ? 'Time TBD' : fmtTime(game.startTime)}${game.locked ? ' · 🔒' : ''}`;
 
   let crowd = '';
   const total = (game.away.picks || 0) + (game.home.picks || 0);
@@ -271,12 +275,12 @@ function renderGameList() {
   }
   const byDay = new Map();
   for (const g of games) {
-    const day = new Date(g.startTime).toDateString();
+    const day = gameDay(g);
     if (!byDay.has(day)) byDay.set(day, []);
     byDay.get(day).push(g);
   }
-  list.innerHTML = [...byDay.values()].map((day) => `
-    <h2 class="day-heading">${fmtDay(day[0].startTime)} · ${day.length} game${day.length === 1 ? '' : 's'}</h2>
+  list.innerHTML = [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([ymd, day]) => `
+    <h2 class="day-heading">${fmtDay(ymd)} · ${day.length} game${day.length === 1 ? '' : 's'}</h2>
     <div class="games">${day.map(gameCard).join('')}</div>`).join('');
 }
 
@@ -392,7 +396,7 @@ function showRules() {
     <div class="weekbar"><h1>How it works</h1></div>
     <div class="prose">
       <h3>Make your picks</h3>
-      <p>Every week (Monday–Sunday) lists every NCAA Division I men's basketball game. Click a team's logo to pick them to win. Click again to clear the pick, or click the other team to switch.</p>
+      <p>Every week (Monday–Sunday; week 1 also includes the Sunday opener) lists every NCAA Division I men's basketball game. Click a team's logo to pick them to win. Click again to clear the pick, or click the other team to switch.</p>
       <h3>Picks lock at tip-off</h3>
       <p>You can change a pick any time before that game starts. Once it tips off, the pick is locked — and you can see how everyone else picked.</p>
       <h3>Scoring</h3>
