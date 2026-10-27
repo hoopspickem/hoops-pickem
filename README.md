@@ -45,7 +45,7 @@ demo players (password `password`). Use it to try the site before the season sta
 The app needs a host that keeps its SQLite file between restarts. Ready-made configs are included:
 
 **Render (easiest):** push this folder to a GitHub repo. In Render, go to **New → Blueprint** and pick
-the repo. `render.yaml` sets up a Docker web service on the Starter plan (about $7/month) with a 1 GB
+the repo. `render.yaml` sets up a Docker web service on the Starter plan (about $7/month) with a 5 GB
 disk at `/data`. Render's free plan works for a quick look, but it erases the database whenever the
 instance sleeps, so picks disappear.
 

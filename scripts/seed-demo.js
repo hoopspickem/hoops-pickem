@@ -57,4 +57,5 @@ for (const [name, picks] of Object.entries(players)) {
   picks.forEach((team, i) => p.run(id, games[i][0], team));
 }
 db.exec('COMMIT');
+require('../lib/scores').recomputeWeek(week);
 console.log(`Demo data loaded into week ${week}. Demo players (password "password"): ${Object.keys(players).join(', ')}`);

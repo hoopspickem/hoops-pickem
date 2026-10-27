@@ -3,6 +3,7 @@ const crypto = require('node:crypto');
 const express = require('express');
 const db = require('./lib/db');
 const { syncWeek } = require('./lib/espn');
+const scores = require('./lib/scores');
 const config = require('./lib/config');
 
 const app = express();
@@ -66,6 +67,7 @@ app.post('/api/register', (req, res) => {
   const { lastInsertRowid } = db
     .prepare('INSERT INTO users (username, pass_hash, salt, is_admin) VALUES (?, ?, ?, ?)')
     .run(username, hashPassword(password, salt), salt, isAdmin);
+  scores.bump(); // new player appears on the leaderboard
   startSession(res, lastInsertRowid);
   res.json({ ok: true });
 });
@@ -100,9 +102,7 @@ const gamesForWeek = db.prepare(`
   SELECT g.*,
          h.name AS home_name, h.short_name AS home_short, h.abbrev AS home_abbrev, h.logo AS home_logo, h.color AS home_color,
          a.name AS away_name, a.short_name AS away_short, a.abbrev AS away_abbrev, a.logo AS away_logo, a.color AS away_color,
-         p.team_id AS my_pick,
-         (SELECT COUNT(*) FROM picks x WHERE x.game_id = g.id AND x.team_id = g.home_team_id) AS home_picks,
-         (SELECT COUNT(*) FROM picks x WHERE x.game_id = g.id AND x.team_id = g.away_team_id) AS away_picks
+         p.team_id AS my_pick
   FROM games g
   JOIN teams h ON h.id = g.home_team_id
   JOIN teams a ON a.id = g.away_team_id
@@ -110,6 +110,23 @@ const gamesForWeek = db.prepare(`
   WHERE g.week = ?
   ORDER BY g.start_time, g.id
 `);
+
+// How everyone picked, per game. Only shown once a game locks, so the numbers are stable
+// and can be counted once a minute per week instead of on every page load.
+const pickCountsQuery = db.prepare(`
+  SELECT p.game_id, p.team_id, COUNT(*) AS n
+  FROM games g JOIN picks p ON p.game_id = g.id
+  WHERE g.week = ?
+  GROUP BY p.game_id, p.team_id
+`);
+const pickCountsCache = new Map(); // week -> { at, counts: Map("game|team" -> n) }
+function pickCounts(week) {
+  const hit = pickCountsCache.get(week);
+  if (hit && Date.now() - hit.at < 60_000) return hit.counts;
+  const counts = new Map(pickCountsQuery.all(week).map((r) => [`${r.game_id}|${r.team_id}`, r.n]));
+  pickCountsCache.set(week, { at: Date.now(), counts });
+  return counts;
+}
 
 const easternFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' });
 const easternDate = (iso) => easternFmt.format(new Date(iso)); // YYYY-MM-DD
@@ -121,6 +138,7 @@ function isLocked(game) {
 app.get('/api/games', (req, res) => {
   const week = Number(req.query.week) || config.currentWeek();
   const rows = gamesForWeek.all(req.user ? req.user.id : 0, week);
+  const counts = pickCounts(week);
   const games = rows.map((g) => {
     const locked = isLocked(g);
     const team = (side) => ({
@@ -128,7 +146,7 @@ app.get('/api/games', (req, res) => {
       logo: g[`${side}_logo`], color: g[`${side}_color`], rank: g[`${side}_rank`], record: g[`${side}_record`],
       score: g[`${side}_score`],
       // Hide the crowd's picks until tip-off so nobody just copies the majority.
-      picks: locked ? g[`${side}_picks`] : null,
+      picks: locked ? counts.get(`${g.id}|${g[`${side}_team_id`]}`) || 0 : null,
     });
     return {
       id: g.id, startTime: g.start_time, status: g.status, statusDetail: g.status_detail,
@@ -166,26 +184,26 @@ app.delete('/api/picks/:gameId', requireUser, (req, res) => {
 // ---------- leaderboard ----------
 // One point for every pick that matches the winner of a finished game.
 
+const leaderboardQuery = db.prepare(`
+  SELECT u.id, u.username, COALESCE(SUM(s.points), 0) AS points, COALESCE(SUM(s.graded), 0) AS graded
+  FROM users u
+  LEFT JOIN user_week_scores s ON s.user_id = u.id AND (? IS NULL OR s.week = ?)
+  GROUP BY u.id
+  ORDER BY points DESC, graded ASC, u.username COLLATE NOCASE
+`);
+
+// Standings only change when results come in or someone signs up, so each view is built
+// once and reused until then (with a one-minute ceiling as a safety net).
+const leaderboardCache = new Map(); // week|'season' -> { version, at, body }
+
 app.get('/api/leaderboard', (req, res) => {
   const week = req.query.week ? Number(req.query.week) : null;
-  const rows = db.prepare(`
-    SELECT u.id, u.username,
-           COALESCE(SUM(CASE WHEN g.winner_team_id IS NOT NULL AND p.team_id = g.winner_team_id THEN 1 ELSE 0 END), 0) AS points,
-           COALESCE(SUM(CASE WHEN g.winner_team_id IS NOT NULL THEN 1 ELSE 0 END), 0) AS graded,
-           COUNT(p.game_id) AS picks
-    FROM users u
-    LEFT JOIN picks p ON p.user_id = u.id
-    LEFT JOIN games g ON g.id = p.game_id
-    WHERE (? IS NULL OR g.week = ?)
-    GROUP BY u.id
-    ORDER BY points DESC, graded ASC, u.username COLLATE NOCASE
-  `).all(week, week);
-
-  // Users with no picks for that week are filtered out by the WHERE; add them back at zero.
-  const seen = new Set(rows.map((r) => r.id));
-  for (const u of db.prepare('SELECT id, username FROM users ORDER BY username COLLATE NOCASE').all()) {
-    if (!seen.has(u.id)) rows.push({ id: u.id, username: u.username, points: 0, graded: 0, picks: 0 });
+  const key = week ?? 'season';
+  const hit = leaderboardCache.get(key);
+  if (hit && hit.version === scores.currentVersion() && Date.now() - hit.at < 60_000) {
+    return res.type('json').send(hit.body);
   }
+  const rows = leaderboardQuery.all(week, week);
 
   let rank = 0;
   let last = null;
@@ -193,7 +211,9 @@ app.get('/api/leaderboard', (req, res) => {
     if (r.points !== last) { rank = i + 1; last = r.points; }
     r.rank = rank;
   });
-  res.json({ week, rows });
+  const body = JSON.stringify({ week, rows });
+  leaderboardCache.set(key, { version: scores.currentVersion(), at: Date.now(), body });
+  res.type('json').send(body);
 });
 
 // ---------- admin ----------
@@ -222,6 +242,7 @@ app.post('/api/admin/games/:gameId/result', requireAdmin, (req, res) => {
   } else {
     db.prepare('UPDATE games SET manual_override = 0 WHERE id = ?').run(game.id); // hand control back to the feed
   }
+  scores.recomputeWeek(game.week);
   res.json({ ok: true });
 });
 
@@ -249,6 +270,7 @@ async function autoSync() {
 }
 
 db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now());
+scores.backfillIfEmpty(); // fills in saved totals the first time this version starts
 
 const PORT = Number(process.env.PORT || 3000);
 app.listen(PORT, () => {
