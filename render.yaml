@@ -1,0 +1,14 @@
+# One-click deploy on Render: Dashboard → New → Blueprint → pick this repo.
+services:
+  - type: web
+    name: hoops-pickem
+    runtime: docker
+    plan: starter          # a persistent disk needs a paid plan; free instances lose the database on restart
+    healthCheckPath: /healthz
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: SEASON_START
+        value: 2026-11-02

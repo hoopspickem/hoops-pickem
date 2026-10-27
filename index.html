@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hoops Pick'em</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏀</text></svg>">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#/picks"><span class="ball" aria-hidden="true"></span>Hoops Pick'em</a>
+      <nav>
+        <a href="#/picks" data-nav="picks">Picks</a>
+        <a href="#/leaderboard" data-nav="leaderboard">Leaderboard</a>
+        <a href="#/rules" data-nav="rules">Rules</a>
+      </nav>
+      <div id="account" class="account"></div>
+    </div>
+  </header>
+
+  <main id="view" class="container"></main>
+
+  <dialog id="auth-dialog">
+    <form id="auth-form" method="dialog">
+      <h2 id="auth-title">Log in</h2>
+      <label>Username <input name="username" autocomplete="username" required></label>
+      <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+      <p id="auth-error" class="error" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn ghost" id="auth-cancel">Cancel</button>
+        <button type="submit" class="btn primary" id="auth-submit">Log in</button>
+      </div>
+      <p class="muted small" id="auth-switch"></p>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>

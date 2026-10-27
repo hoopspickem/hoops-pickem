@@ -1,0 +1,16 @@
+{
+  "name": "hoops-pickem",
+  "version": "1.0.0",
+  "description": "Weekly pick'em for every NCAA Division I men's basketball game",
+  "main": "server.js",
+  "type": "commonjs",
+  "engines": { "node": ">=22.5" },
+  "scripts": {
+    "start": "node server.js",
+    "sync": "node scripts/sync.js",
+    "seed-demo": "node scripts/seed-demo.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  }
+}
