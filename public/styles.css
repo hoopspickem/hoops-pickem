@@ -145,6 +145,28 @@ table.board { width: 100%; border-collapse: collapse; background: var(--surface)
 .medal.m2 { background: #ced4da; color: #343a40; }
 .medal.m3 { background: #e8a87c; color: #4a2508; }
 
+/* ---------- player stats ---------- */
+.player-link { text-decoration: none; font-weight: 600; }
+.player-link:hover { color: var(--accent); text-decoration: underline; }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 18px; }
+.panel h2 { font-size: 18px; margin: 0 0 2px; }
+.panel > p { margin: 0 0 12px; }
+.team-stats { list-style: none; margin: 0; padding: 0; }
+.team-stats li { display: grid; grid-template-columns: 22px 40px 1fr auto; grid-template-rows: auto 4px; column-gap: 12px; row-gap: 6px; align-items: center; padding: 10px 0; border-top: 1px solid var(--border); }
+.team-stats li:first-child { border-top: 0; }
+.team-stats .pos { color: var(--muted); font-weight: 700; text-align: center; }
+.team-stats .logo, .team-stats .logo-fallback { width: 40px; height: 40px; object-fit: contain; }
+.team-stats .logo-fallback { border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 11px; }
+.team-stats .who { display: flex; flex-direction: column; min-width: 0; }
+.team-stats .pct { font-weight: 800; font-size: 17px; font-variant-numeric: tabular-nums; }
+.team-stats .bar { grid-column: 3 / 5; height: 4px; border-radius: 2px; background: var(--surface-2); overflow: hidden; }
+.team-stats .bar i { display: block; height: 100%; }
+.team-stats.best .bar i { background: var(--win); }
+.team-stats.best .pct { color: var(--win); }
+.team-stats.worst .bar i { background: var(--loss); }
+.team-stats.worst .pct { color: var(--loss); }
+
 .prose { max-width: 680px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 24px 16px; }
 
 /* ---------- dialog & toast ---------- */

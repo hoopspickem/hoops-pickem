@@ -216,6 +216,43 @@ app.get('/api/leaderboard', (req, res) => {
   res.type('json').send(body);
 });
 
+// ---------- player stats ----------
+// For each team, how often this player called that team's finished games correctly,
+// whether they picked that team or its opponent.
+
+const teamRecordsQuery = db.prepare(`
+  SELECT t.id, t.name, t.short_name, t.abbrev, t.logo, t.color,
+         SUM(p.team_id = g.winner_team_id) AS correct,
+         COUNT(*) AS graded
+  FROM picks p
+  JOIN games g ON g.id = p.game_id AND g.winner_team_id IS NOT NULL
+  JOIN teams t ON t.id = g.home_team_id OR t.id = g.away_team_id
+  WHERE p.user_id = ?
+  GROUP BY t.id
+`);
+
+app.get('/api/players/:id/stats', (req, res) => {
+  const user = db.prepare('SELECT id, username FROM users WHERE id = ?').get(Number(req.params.id));
+  if (!user) return res.status(404).json({ error: 'Player not found.' });
+
+  const teams = teamRecordsQuery.all(user.id).map((t) => ({
+    id: t.id, name: t.name, short: t.short_name, abbrev: t.abbrev, logo: t.logo, color: t.color,
+    correct: t.correct, wrong: t.graded - t.correct, graded: t.graded, pct: t.correct / t.graded,
+  }));
+  // Ranked by net record (hits minus misses), so 6-1 beats 2-0 and 1-4 is worse than 4-5.
+  // A team only counts as "best" with a winning record and "worst" with a losing one.
+  const net = (t) => t.correct - t.wrong;
+  const byName = (a, b) => a.short.localeCompare(b.short);
+  const best = teams.filter((t) => net(t) > 0)
+    .sort((a, b) => net(b) - net(a) || b.pct - a.pct || byName(a, b)).slice(0, 5);
+  const worst = teams.filter((t) => net(t) < 0)
+    .sort((a, b) => net(a) - net(b) || a.pct - b.pct || byName(a, b)).slice(0, 5);
+
+  const totals = db.prepare(`SELECT COALESCE(SUM(points), 0) AS points, COALESCE(SUM(graded), 0) AS graded
+    FROM user_week_scores WHERE user_id = ?`).get(user.id);
+  res.json({ user, totals, teamsSeen: teams.length, best, worst });
+});
+
 // ---------- admin ----------
 
 app.post('/api/admin/sync', requireAdmin, async (req, res) => {

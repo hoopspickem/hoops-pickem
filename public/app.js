@@ -60,6 +60,7 @@ window.logoFallback = (img) => {
 // ---------- account ----------
 
 function renderAccount() {
+  $('#nav-stats').hidden = !state.me;
   const el = $('#account');
   if (state.me) {
     el.innerHTML = `<span>Hi, <b>${esc(state.me.username)}</b>${state.me.isAdmin ? ' · admin' : ''}</span>
@@ -371,7 +372,7 @@ async function showLeaderboard() {
       <tbody>${data.rows.map((r) => `
         <tr class="${state.me && r.id === state.me.id ? 'me' : ''}">
           <td><span class="medal ${r.rank <= 3 && r.points > 0 ? `m${r.rank}` : ''}">${r.rank}</span></td>
-          <td>${esc(r.username)}</td>
+          <td><a class="player-link" href="#/player/${r.id}">${esc(r.username)}</a></td>
           <td class="num"><b>${r.points}</b></td>
           <td class="num">${r.points}-${r.graded - r.points}</td>
           <td class="num">${r.graded ? ((r.points / r.graded) * 100).toFixed(1) + '%' : '—'}</td>
@@ -389,6 +390,68 @@ async function showLeaderboard() {
   if ($('#board-week')) $('#board-week').onchange = (e) => { state.boardWeek = Number(e.target.value); showLeaderboard(); };
 }
 
+// ---------- player stats ----------
+
+function teamLogo(t, size = 40) {
+  return `<img class="logo" src="${esc(t.logo)}" alt="" width="${size}" height="${size}" loading="lazy"
+    data-abbrev="${esc(t.abbrev || t.short.slice(0, 4))}" data-color="${esc(t.color || '')}" onerror="logoFallback(this)">`;
+}
+
+function teamStatList(teams, kind) {
+  if (!teams.length) {
+    return `<p class="muted small">${kind === 'best'
+      ? 'No team with more hits than misses yet.'
+      : 'No team with more misses than hits yet. Nice!'}</p>`;
+  }
+  return `<ol class="team-stats ${kind}">${teams.map((t, i) => `
+    <li>
+      <span class="pos">${i + 1}</span>
+      ${teamLogo(t)}
+      <span class="who"><b>${esc(t.short)}</b><span class="muted small">${t.correct}-${t.wrong} in their games</span></span>
+      <span class="pct">${Math.round(t.pct * 100)}%</span>
+      <span class="bar"><i style="width:${Math.round(t.pct * 100)}%"></i></span>
+    </li>`).join('')}</ol>`;
+}
+
+async function showPlayer(id) {
+  if (!id) {
+    if (!state.me) {
+      view.innerHTML = `<div class="empty"><h3>Log in to see your stats</h3>
+        <p><button class="btn primary" id="stats-login">Log in</button></p></div>`;
+      $('#stats-login').onclick = () => openAuth('login');
+      return;
+    }
+    id = state.me.id;
+  }
+  view.innerHTML = '<p class="muted">Loading stats…</p>';
+  const s = await api(`/api/players/${encodeURIComponent(id)}/stats`);
+  const mine = state.me && s.user.id === state.me.id;
+  const { points, graded } = s.totals;
+
+  view.innerHTML = `
+    <div class="weekbar"><h1>${mine ? 'My Stats' : esc(s.user.username)}</h1></div>
+    <div class="summary">
+      <div class="stat"><b>${points}</b><span>Season points</span></div>
+      <div class="stat"><b>${points}-${graded - points}</b><span>Record in finished games</span></div>
+      <div class="stat"><b>${graded ? ((points / graded) * 100).toFixed(1) + '%' : '—'}</b><span>Win %</span></div>
+      <div class="stat"><b>${s.teamsSeen}</b><span>Teams picked in or against</span></div>
+    </div>
+    ${graded ? `
+    <div class="stats-grid">
+      <section class="panel">
+        <h2>🔥 Best-read teams</h2>
+        <p class="muted small">Teams whose games ${mine ? 'you call' : 'they call'} right most often, whether picking them or against them.</p>
+        ${teamStatList(s.best, 'best')}
+      </section>
+      <section class="panel">
+        <h2>🧊 Toughest teams</h2>
+        <p class="muted small">Teams whose games ${mine ? 'you miss' : 'they miss'} most often.</p>
+        ${teamStatList(s.worst, 'worst')}
+      </section>
+    </div>` : `<div class="empty"><h3>No finished games yet</h3>
+      <p>Best and worst teams show up here once ${mine ? 'your' : 'their'} picked games go final.</p></div>`}`;
+}
+
 // ---------- rules ----------
 
 function showRules() {
@@ -402,7 +465,7 @@ function showRules() {
       <h3>Scoring</h3>
       <p>You earn <b>1 point</b> for every game where your pick wins. No points are taken away for wrong picks, so pick as many games as you can. Canceled or postponed games don't count.</p>
       <h3>Standings</h3>
-      <p>The leaderboard shows the season total and each week's results. Results come in automatically from the official scoreboard a few minutes after each game ends.</p>
+      <p>The leaderboard shows the season total and each week's results. Click any player's name to see the teams they read best and worst. Results come in automatically from the official scoreboard a few minutes after each game ends.</p>
     </div>`;
 }
 
@@ -410,10 +473,13 @@ function showRules() {
 
 async function route() {
   const [, page = 'picks', arg] = location.hash.split('/');
-  document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === page));
+  // "My Stats" is only highlighted on your own stats page, not on another player's.
+  const navPage = page === 'player' && arg && Number(arg) !== state.me?.id ? 'leaderboard' : page;
+  document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === navPage));
   try {
     if (page === 'leaderboard') await showLeaderboard();
     else if (page === 'rules') showRules();
+    else if (page === 'player') await showPlayer(arg);
     else {
       if (arg && Number(arg)) state.week = Number(arg);
       await showPicks();
