@@ -56,7 +56,7 @@ button { font: inherit; }
   radial-gradient(circle at 50% 50%, transparent 46%, #3b1d06 47% 53%, transparent 54%) ,
   linear-gradient(90deg, transparent 47%, #3b1d06 47% 53%, transparent 53%),
   linear-gradient(0deg, transparent 47%, #3b1d06 47% 53%, transparent 53%), #f08c00; }
-nav { display: flex; gap: 4px; }
+nav { display: flex; flex-wrap: wrap; gap: 4px; }
 nav a { text-decoration: none; padding: 6px 12px; border-radius: 8px; color: #cfd6e4; font-weight: 600; }
 nav a.active, nav a:hover { background: rgba(255,255,255,.1); color: #fff; }
 .account { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: 14px; }
@@ -145,6 +145,20 @@ table.board { width: 100%; border-collapse: collapse; background: var(--surface)
 .medal.m2 { background: #ced4da; color: #343a40; }
 .medal.m3 { background: #e8a87c; color: #4a2508; }
 
+/* ---------- admin results ---------- */
+.table-wrap { overflow-x: auto; border-radius: var(--radius); }
+.results td { padding: 8px 10px; vertical-align: middle; }
+.results .team-cell { white-space: nowrap; }
+.results .team-cell > * { vertical-align: middle; }
+.results .team-cell span { margin-left: 8px; font-weight: 600; }
+.results .team-cell .logo, .results .team-cell .logo-fallback { width: 28px; height: 28px; object-fit: contain; display: inline-grid; place-items: center; border-radius: 50%; color: #fff; font-size: 9px; font-weight: 800; }
+.results input.score { width: 64px; font: inherit; font-weight: 700; text-align: center; padding: 6px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+.results .actions { white-space: nowrap; text-align: right; }
+.results .actions .btn { padding: 5px 12px; }
+.tag { display: inline-block; padding: 2px 8px; border-radius: 999px; font-weight: 700; font-size: 12px; white-space: nowrap; }
+.tag.ok { background: var(--win-soft); color: var(--win); }
+.tag.warn { background: var(--accent-soft); color: var(--accent); }
+
 /* ---------- player stats ---------- */
 .player-link { text-decoration: none; font-weight: 600; }
 .player-link:hover { color: var(--accent); text-decoration: underline; }
@@ -184,6 +198,8 @@ dialog input { font: inherit; padding: 9px 11px; border-radius: 9px; border: 1px
 
 @media (max-width: 560px) {
   .topbar-inner { gap: 10px; }
+  nav { width: 100%; }
+  nav a { padding: 6px 10px; }
   .account { margin-left: 0; width: 100%; justify-content: flex-end; }
   .games { grid-template-columns: 1fr; }
   .board th:nth-child(4), .board td:nth-child(4) { display: none; }

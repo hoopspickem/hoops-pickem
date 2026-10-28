@@ -61,6 +61,7 @@ window.logoFallback = (img) => {
 
 function renderAccount() {
   $('#nav-stats').hidden = !state.me;
+  $('#nav-results').hidden = !state.me?.isAdmin;
   const el = $('#account');
   if (state.me) {
     el.innerHTML = `<span>Hi, <b>${esc(state.me.username)}</b>${state.me.isAdmin ? ' · admin' : ''}</span>
@@ -452,6 +453,91 @@ async function showPlayer(id) {
       <p>Best and worst teams show up here once ${mine ? 'your' : 'their'} picked games go final.</p></div>`}`;
 }
 
+// ---------- admin: results ----------
+// Enter final scores by hand for any week that has already been played, e.g. when the
+// feed missed a game or was down. Saving a score immediately re-scores everyone's picks.
+
+const weekName = (n) => state.weeks.find((x) => x.week === n)?.label || `Week ${n}`;
+
+async function showResults(arg) {
+  if (!state.me?.isAdmin) {
+    view.innerHTML = '<div class="empty">Only the league admin can enter results.</div>';
+    return;
+  }
+  const week = Number(arg) || state.resultsWeek || state.currentWeek;
+  state.resultsWeek = week;
+  view.innerHTML = '<p class="muted">Loading games…</p>';
+  const data = await api(`/api/games?week=${week}`);
+  const started = data.games.filter((g) => g.locked);
+  const missing = started.filter((g) => !g.winner && g.status !== 'canceled');
+  const onlyMissing = state.resultsOnlyMissing ?? false;
+  const rows = onlyMissing ? missing : started;
+
+  const weekOptions = state.weeks.filter((w) => w.week <= state.currentWeek).map((w) =>
+    `<option value="${w.week}" ${w.week === week ? 'selected' : ''}>${esc(w.label)} · ${fmtRange(w)}</option>`).join('');
+
+  const row = (g) => `
+    <tr data-game="${esc(g.id)}">
+      <td class="muted small">${new Date(g.startTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</td>
+      <td class="team-cell">${teamLogo(g.away, 28)}<span>${esc(g.away.short)}</span></td>
+      <td><input class="score" name="away" type="number" min="0" max="999" inputmode="numeric" value="${g.away.score ?? ''}" aria-label="${esc(g.away.short)} score"></td>
+      <td class="muted">@</td>
+      <td><input class="score" name="home" type="number" min="0" max="999" inputmode="numeric" value="${g.home.score ?? ''}" aria-label="${esc(g.home.short)} score"></td>
+      <td class="team-cell">${teamLogo(g.home, 28)}<span>${esc(g.home.short)}</span></td>
+      <td class="small">${g.status === 'canceled' ? '<span class="muted">Canceled</span>'
+        : g.winner ? `<span class="tag ok">${esc(g.statusDetail || 'Final')}</span>`
+        : `<span class="tag warn">${g.status === 'in' ? 'In progress' : 'Needs result'}</span>`}</td>
+      <td class="actions"><button class="btn primary save">Save</button>
+        ${g.statusDetail === 'Final (admin)' ? '<button class="btn ghost reset" title="Discard the manual result and use the scoreboard feed again">Use feed</button>' : ''}</td>
+    </tr>`;
+
+  view.innerHTML = `
+    <div class="weekbar">
+      <h1>Results</h1>
+      <select id="results-week" aria-label="Choose week">${weekOptions}</select>
+      <button class="btn" id="results-sync">↻ Sync ${esc(weekName(week))} from feed</button>
+    </div>
+    <p class="muted">Type in the final score for any game that has been played, then press <b>Save</b>. Saving re-scores everyone's picks for that game right away. Manually entered scores are kept even when the scoreboard feed later reports something different, until you press <b>Use feed</b>.</p>
+    <div class="filters">
+      <span class="chip">${started.length} played · ${missing.length} missing a result</span>
+      <label class="chip"><input type="checkbox" id="only-missing" ${onlyMissing ? 'checked' : ''}> Only games missing a result</label>
+    </div>
+    ${!data.games.length ? `<div class="empty">No games are loaded for ${esc(weekName(week))}. Press “Sync from feed” to load them.</div>`
+      : !rows.length ? `<div class="empty">${onlyMissing ? 'Every played game this week has a result. 🎉' : 'No games have been played yet this week.'}</div>`
+      : `<div class="table-wrap"><table class="board results">
+          <thead><tr><th>Date</th><th>Away</th><th></th><th></th><th></th><th>Home</th><th>Status</th><th></th></tr></thead>
+          <tbody>${rows.map(row).join('')}</tbody></table></div>`}`;
+
+  $('#results-week').onchange = (e) => { location.hash = `#/results/${e.target.value}`; };
+  $('#only-missing').onchange = (e) => { state.resultsOnlyMissing = e.target.checked; showResults(week); };
+  $('#results-sync').onclick = async (e) => {
+    e.target.disabled = true;
+    try {
+      const r = await api('/api/admin/sync', { method: 'POST', body: { week } });
+      toast(`Synced ${r.count} games`);
+      showResults(week);
+    } catch (err) { toast(err.message); e.target.disabled = false; }
+  };
+  view.querySelectorAll('tr[data-game]').forEach((tr) => {
+    const id = tr.dataset.game;
+    const post = async (body, msg) => {
+      try {
+        await api(`/api/admin/games/${encodeURIComponent(id)}/result`, { method: 'POST', body });
+        toast(msg);
+        showResults(week);
+      } catch (err) { toast(err.message); }
+    };
+    tr.querySelector('.save').onclick = () => {
+      const away = tr.querySelector('[name=away]').value;
+      const home = tr.querySelector('[name=home]').value;
+      if (away === '' || home === '') return toast('Enter both scores first.');
+      post({ awayScore: Number(away), homeScore: Number(home) }, 'Result saved — picks re-scored');
+    };
+    tr.querySelector('.reset')?.addEventListener('click', () => post({ winner: null }, 'Using the feed for this game again'));
+    tr.querySelectorAll('input').forEach((i) => i.addEventListener('keydown', (e) => { if (e.key === 'Enter') tr.querySelector('.save').click(); }));
+  });
+}
+
 // ---------- rules ----------
 
 function showRules() {
@@ -465,7 +551,7 @@ function showRules() {
       <h3>Scoring</h3>
       <p>You earn <b>1 point</b> for every game where your pick wins. No points are taken away for wrong picks, so pick as many games as you can. Canceled or postponed games don't count.</p>
       <h3>Standings</h3>
-      <p>The leaderboard shows the season total and each week's results. Click any player's name to see the teams they read best and worst. Results come in automatically from the official scoreboard a few minutes after each game ends.</p>
+      <p>The leaderboard shows the season total and each week's results. Click any player's name to see the teams they read best and worst. Results come in automatically from the official scoreboard a few minutes after each game ends. If a result is ever missing or wrong, the league admin can enter the final score by hand.</p>
     </div>`;
 }
 
@@ -480,6 +566,7 @@ async function route() {
     if (page === 'leaderboard') await showLeaderboard();
     else if (page === 'rules') showRules();
     else if (page === 'player') await showPlayer(arg);
+    else if (page === 'results') await showResults(arg);
     else {
       if (arg && Number(arg)) state.week = Number(arg);
       await showPicks();

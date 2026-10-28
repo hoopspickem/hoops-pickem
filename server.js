@@ -265,10 +265,30 @@ app.post('/api/admin/sync', requireAdmin, async (req, res) => {
   }
 });
 
-// Manually set (or clear) the winner if the feed is wrong or unavailable.
+// Manually enter a final score, set just the winner, or hand the game back to the feed.
+// Body: { homeScore, awayScore } | { winner } | { winner: null }
 app.post('/api/admin/games/:gameId/result', requireAdmin, (req, res) => {
   const game = db.prepare('SELECT * FROM games WHERE id = ?').get(req.params.gameId);
   if (!game) return res.status(404).json({ error: 'Game not found.' });
+  const entering = req.body.winner || req.body.homeScore != null || req.body.awayScore != null;
+  if (entering && game.status === 'pre' && new Date(game.start_time) > new Date()) {
+    return res.status(409).json({ error: "This game hasn't started yet, so it can't have a final result." });
+  }
+
+  if (req.body.homeScore != null || req.body.awayScore != null) {
+    const home = Number(req.body.homeScore);
+    const away = Number(req.body.awayScore);
+    if (![home, away].every((n) => Number.isInteger(n) && n >= 0 && n <= 999)) {
+      return res.status(400).json({ error: 'Enter both scores as whole numbers.' });
+    }
+    if (home === away) return res.status(400).json({ error: 'Scores are tied. Enter the final score after overtime.' });
+    db.prepare(`UPDATE games SET home_score = ?, away_score = ?, winner_team_id = ?, status = 'post',
+                status_detail = 'Final (admin)', manual_override = 1, updated_at = datetime('now') WHERE id = ?`)
+      .run(home, away, home > away ? game.home_team_id : game.away_team_id, game.id);
+    scores.recomputeWeek(game.week);
+    return res.json({ ok: true });
+  }
+
   const winner = req.body.winner ? String(req.body.winner) : null;
   if (winner && winner !== game.home_team_id && winner !== game.away_team_id) {
     return res.status(400).json({ error: 'Winner must be one of the two teams.' });
